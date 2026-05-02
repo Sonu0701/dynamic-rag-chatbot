@@ -8,6 +8,7 @@
 ![LangChain](https://img.shields.io/badge/LangChain-RAG-orange?style=flat-square)
 ![Pinecone](https://img.shields.io/badge/Pinecone-VectorDB-purple?style=flat-square)
 ![Mistral AI](https://img.shields.io/badge/Mistral-AI-red?style=flat-square)
+![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED?style=flat-square&logo=docker)
 
 ---
 
@@ -21,16 +22,16 @@ Every time you upload a new PDF, the old document is **automatically deleted** f
 
 ---
 
-## ✨ Features
+## 🚀 Advanced Features
 
 | Feature | Description |
 |---|---|
-| 📄 PDF Upload | Upload any PDF and start chatting immediately |
-| 🔄 Dynamic Indexing | Old document vectors are auto-deleted from Pinecone on new upload |
-| 🧠 Context-Aware Answers | RAG pipeline retrieves the most relevant chunks before answering |
-| 💬 Chat Memory | Conversation history is maintained across turns |
-| 📚 Source Tracking | Every answer shows which PDF it came from |
-| 🌙 Dark Mode UI | Clean, modern dark mode interface |
+| 📄 Dynamic PDF Upload & Re-indexing | Upload any PDF — old vectors auto-deleted, new ones indexed instantly |
+| 🧠 Context-Aware RAG Responses | Top-5 most relevant chunks retrieved per query for grounded answers |
+| 💬 Chat Memory | Full conversation history maintained across turns |
+| 📚 Source Tracking | Every answer shows exactly which PDF it came from |
+| 🌙 Dark Mode UI | Clean, modern dark mode interface built with React + Vite |
+| 🐳 Dockerized Frontend & Backend | Fully containerized — run anywhere with one command |
 
 ---
 
@@ -76,6 +77,9 @@ User asks a question
 - **[React](https://react.dev/)** (with **Vite**) — Fast, modern UI
 - **CSS** — Custom dark mode styling
 
+### DevOps
+- **[Docker](https://www.docker.com/)** — Containerized backend & frontend for easy deployment
+
 ---
 
 ## 📁 Project Structure
@@ -88,15 +92,18 @@ dynamic-rag-chatbot/
 │   ├── rag_pipeline.py     # Vectorstore creation & retriever setup
 │   ├── helper.py           # PDF loading, chunking, embeddings
 │   ├── uploads/            # Temporary PDF storage
+│   ├── Dockerfile          # Backend Docker config
 │   ├── requirements.txt
 │   └── .env                # API keys (not committed)
 │
 ├── frontend/
-│   ├── src/
-│   │   ├── App.jsx         # Main chat interface
-│   │   └── ...
-│   ├── package.json
-│   └── vite.config.js
+│   └── vite-project/
+│       ├── src/
+│       │   ├── App.jsx     # Main chat interface
+│       │   └── ...
+│       ├── Dockerfile      # Frontend Docker config
+│       ├── package.json
+│       └── vite.config.js
 │
 └── README.md
 ```
@@ -105,71 +112,83 @@ dynamic-rag-chatbot/
 
 ## ⚙️ Setup & Installation
 
+Choose your preferred setup method:
+
+---
+
+### 🐳 Option 1 — Docker Setup (Recommended)
+
+> No Python or Node.js installation needed. Just Docker.
+
+**Backend:**
+```bash
+cd backend
+docker build -t dynamic-rag-backend .
+docker run --env-file .env -p 8000:8000 dynamic-rag-backend
+```
+
+**Frontend:**
+```bash
+cd frontend/vite-project
+docker build -t dynamic-rag-frontend .
+docker run -p 3000:80 dynamic-rag-frontend
+```
+
+- Backend runs at: `http://localhost:8000`
+- Frontend runs at: `http://localhost:3000`
+
+---
+
+### 🔹 Option 2 — Local Setup
+
 ### Prerequisites
 - Python 3.10+
 - Node.js 18+
 - Pinecone account ([free tier works](https://www.pinecone.io/))
 - Mistral AI API key ([get one here](https://console.mistral.ai/))
 
----
-
-### 🔹 Backend Setup
-
+**Backend:**
 ```bash
-# 1. Navigate to backend
 cd backend
 
-# 2. Create and activate virtual environment
+# Create and activate virtual environment
 python -m venv venv
 
 # Windows
 venv\Scripts\activate
-
 # macOS/Linux
 source venv/bin/activate
 
-# 3. Install dependencies
+# Install dependencies
 pip install -r requirements.txt
 
-# 4. Create .env file
+# Create .env file and add your keys (see below)
 touch .env
+
+# Start the server
+uvicorn app:app --reload
 ```
 
-Add the following to your `.env` file:
+**Frontend:**
+```bash
+cd frontend/vite-project
+npm install
+npm run dev
+```
+
+- Backend runs at: `http://localhost:8000`
+- Frontend runs at: `http://localhost:5173`
+
+---
+
+## 🔑 Environment Variables
+
+Create a `.env` file inside the `backend/` folder:
 
 ```env
 PINECONE_API_KEY=your_pinecone_api_key_here
 MISTRAL_API_KEY=your_mistral_api_key_here
 ```
-
-```bash
-# 5. Start the backend server
-uvicorn app:app --reload
-```
-
-Backend runs at: `http://localhost:8000`
-
----
-
-### 🔹 Frontend Setup
-
-```bash
-# 1. Navigate to frontend
-cd frontend
-cd vite-project
-
-# 2. Install dependencies
-npm install
-
-# 3. Start the dev server
-npm run dev
-```
-
-Frontend runs at: `http://localhost:5173`
-
----
-
-## 🔑 Environment Variables
 
 | Variable | Description | Where to get it |
 |---|---|---|
@@ -234,6 +253,9 @@ Mistral's `mistral-small` model is cost-efficient and performs well on document 
 **Why a fixed namespace in Pinecone?**
 Using a fixed namespace (`current-doc`) makes it trivial to `delete_all` the previous document's vectors without needing to track individual vector IDs.
 
+**Why Docker?**
+Docker removes environment setup friction entirely. Anyone can clone the repo and run the full stack with two commands — no Python version conflicts, no Node.js issues.
+
 ---
 
 ## 🔮 Future Improvements
@@ -243,7 +265,7 @@ Using a fixed namespace (`current-doc`) makes it trivial to `delete_all` the pre
 - [ ] Streaming responses for faster perceived performance
 - [ ] User authentication and personal document spaces
 - [ ] Persistent chat history with PostgreSQL
-- [ ] Docker support for one-command deployment
+- [ ] Docker Compose for single-command full-stack startup
 
 ---
 
