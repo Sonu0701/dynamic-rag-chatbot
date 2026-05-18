@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import "./App.css";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 function App() {
   const [query, setQuery] = useState("");
   const [messages, setMessages] = useState([]);
@@ -31,7 +33,10 @@ function App() {
 
   // 📄 Upload PDF
   const uploadFile = async () => {
-    if (!file) return;
+    if (!file) {
+      alert("Please select a PDF first.");
+      return;
+    }
 
     const formData = new FormData();
     formData.append("file", file);
@@ -39,18 +44,37 @@ function App() {
     setUploading(true);
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/upload", {
+      const res = await fetch(`${API_URL}/upload`, {
         method: "POST",
         body: formData,
       });
 
+      if (!res.ok) {
+        throw new Error("Upload failed");
+      }
+
       const data = await res.json();
 
-      setCurrentFile(data.current_file);
-      setMessages([]);
+      setCurrentFile(data.current_file || file.name);
+      setMessages([
+        {
+          type: "bot",
+          text: `✅ PDF uploaded successfully: ${data.current_file || file.name}`,
+          time: getTime(),
+        },
+      ]);
+
       setQuery("");
     } catch (err) {
       console.error("Upload error", err);
+
+      setMessages([
+        {
+          type: "bot",
+          text: "❌ Upload failed. Check backend /upload endpoint.",
+          time: getTime(),
+        },
+      ]);
     }
 
     setUploading(false);
@@ -71,23 +95,33 @@ function App() {
 
     try {
       const res = await fetch(
-        `http://127.0.0.1:8000/chat?query=${encodeURIComponent(query)}`
+        `${API_URL}/chat?query=${encodeURIComponent(query)}`
       );
+
+      if (!res.ok) {
+        throw new Error("Chat request failed");
+      }
 
       const data = await res.json();
 
       const botMsg = {
         type: "bot",
-        text: data.answer,
+        text: data.answer || "No response received.",
         sources: data.sources || [],
         time: getTime(),
       };
 
       setMessages((prev) => [...prev, botMsg]);
-    } catch {
+    } catch (err) {
+      console.error("Chat error", err);
+
       setMessages((prev) => [
         ...prev,
-        { type: "bot", text: "❌ Server error", time: getTime() },
+        {
+          type: "bot",
+          text: "❌ Server error. Check backend connection.",
+          time: getTime(),
+        },
       ]);
     }
 
@@ -142,8 +176,6 @@ function App() {
 
           {messages.map((msg, i) => (
             <div key={i} className={`bubble ${msg.type}`}>
-              
-              {/* 🔥 IMPORTANT FIX */}
               <p style={{ whiteSpace: "pre-line" }}>
                 {msg.text}
               </p>
@@ -154,8 +186,8 @@ function App() {
                 <div className="sources">
                   <small>Sources:</small>
                   <ul>
-                    {msg.sources.map((s, i) => (
-                      <li key={i}>{s}</li>
+                    {msg.sources.map((s, index) => (
+                      <li key={index}>{s}</li>
                     ))}
                   </ul>
                 </div>
