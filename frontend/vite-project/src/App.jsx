@@ -8,7 +8,6 @@ function App() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [file, setFile] = useState(null);
-
   const [currentFile, setCurrentFile] = useState("");
   const [darkMode, setDarkMode] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -29,6 +28,9 @@ function App() {
   // 🗑 Clear chat
   const clearChat = () => {
     setMessages([]);
+    setCurrentFile("");
+    setFile(null);
+    setQuery("");
   };
 
   // 📄 Upload PDF
@@ -49,13 +51,23 @@ function App() {
         body: formData,
       });
 
-      if (!res.ok) {
-        throw new Error("Upload failed");
+      const text = await res.text();
+
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        throw new Error(`Invalid server response (${res.status})`);
       }
 
-      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          data.detail || data.error || `Upload failed (${res.status})`
+        );
+      }
 
       setCurrentFile(data.current_file || file.name);
+
       setMessages([
         {
           type: "bot",
@@ -65,19 +77,20 @@ function App() {
       ]);
 
       setQuery("");
+
     } catch (err) {
-      console.error("Upload error", err);
+      console.error("Upload error:", err);
 
       setMessages([
         {
           type: "bot",
-          text: "❌ Upload failed. Check backend /upload endpoint.",
+          text: `❌ ${err.message}`,
           time: getTime(),
         },
       ]);
+    } finally {
+      setUploading(false);
     }
-
-    setUploading(false);
   };
 
   // 💬 Send message
@@ -98,11 +111,20 @@ function App() {
         `${API_URL}/chat?query=${encodeURIComponent(query)}`
       );
 
-      if (!res.ok) {
-        throw new Error("Chat request failed");
+      const text = await res.text();
+
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        throw new Error(`Invalid server response (${res.status})`);
       }
 
-      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          data.detail || data.error || `Chat failed (${res.status})`
+        );
+      }
 
       const botMsg = {
         type: "bot",
@@ -112,21 +134,22 @@ function App() {
       };
 
       setMessages((prev) => [...prev, botMsg]);
+
     } catch (err) {
-      console.error("Chat error", err);
+      console.error("Chat error:", err);
 
       setMessages((prev) => [
         ...prev,
         {
           type: "bot",
-          text: "❌ Server error. Check backend connection.",
+          text: `❌ ${err.message}`,
           time: getTime(),
         },
       ]);
+    } finally {
+      setLoading(false);
+      setQuery("");
     }
-
-    setLoading(false);
-    setQuery("");
   };
 
   return (
@@ -195,7 +218,7 @@ function App() {
             </div>
           ))}
 
-          {/* Typing */}
+          {/* Typing animation */}
           {loading && (
             <div className="typing">
               <span></span>
@@ -220,7 +243,10 @@ function App() {
             }
             disabled={!currentFile}
           />
-          <button onClick={sendMessage} disabled={!currentFile || loading}>
+          <button
+            onClick={sendMessage}
+            disabled={!currentFile || loading}
+          >
             Send
           </button>
         </div>
