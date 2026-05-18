@@ -13,7 +13,7 @@ load_dotenv()
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
 
-index_name = "dynamic-rag"
+index_name = "dynamic-rag-mistral"
 
 # 🔥 FIXED NAMESPACE
 NAMESPACE = "current-doc"
@@ -67,7 +67,7 @@ def get_chain(vectorstore):
 
     # LLM
     model = ChatMistralAI(
-        model="mistral-small",
+        model="open-mistral-7b",
         api_key=MISTRAL_API_KEY,
         temperature=0
     )
