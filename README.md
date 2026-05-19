@@ -18,7 +18,7 @@ Most RAG chatbots just keep adding documents to the vector database forever — 
 
 **This chatbot is different.**
 
-Every time you upload a new PDF, the old document is **automatically deleted** from Pinecone before the new one is indexed. You always get clean, accurate answers from your current document — no manual cleanup, no stale data.
+Every time you upload a new PDF, the old document is **automatically deleted** from Pinecone before the new one is indexed. Pinecone is polled until deletion is fully confirmed before upload begins — so you always get clean, accurate answers from your current document. No manual cleanup, no stale data.
 
 ---
 
@@ -26,11 +26,14 @@ Every time you upload a new PDF, the old document is **automatically deleted** f
 
 | Feature | Description |
 |---|---|
-| 📄 Dynamic PDF Upload & Re-indexing | Upload any PDF — old vectors auto-deleted, new ones indexed instantly |
-| 🧠 Context-Aware RAG Responses | Top-5 most relevant chunks retrieved per query for grounded answers |
+| 📄 Dynamic PDF Upload & Re-indexing | Upload any PDF — old vectors auto-deleted and verified, new ones indexed instantly |
+| 🧠 MMR Retrieval | Top-6 diverse chunks retrieved per query via Max Marginal Relevance for grounded answers |
+| 🛡️ Hallucination Guard | Similarity score threshold (0.75) blocks off-topic questions before they reach the LLM |
+| ⚡ Auto Model Fallback | Switches Mistral models automatically on 429 rate limits (nemo → 7b → small) |
+| ✅ Delete Verification | Polls Pinecone to confirm old vectors fully deleted before new upload begins |
 | 💬 Chat Memory | Full conversation history maintained across turns |
-| 📚 Source Tracking | Every answer shows exactly which PDF it came from |
-| 🌙 Dark Mode UI | Clean, modern dark mode interface built with React + Vite |
+| 📚 Source Tracking | Every answer shows exactly which PDF page it came from |
+| 🎨 Modern Gradient UI | Purple/blue gradient theme with fullscreen layout built with React + Vite |
 | 🐳 Dockerized Frontend & Backend | Fully containerized — run anywhere with one command |
 
 ---
@@ -43,11 +46,11 @@ User uploads PDF
       ▼
 FastAPI Backend
       │
-      ├── 1. Delete old vectors from Pinecone (NAMESPACE: current-doc)
-      ├── 2. Load & parse PDF (LangChain PDF Loader)
-      ├── 3. Split into chunks (RecursiveCharacterTextSplitter)
-      ├── 4. Embed chunks (Embedding Model)
-      └── 5. Store in Pinecone Vector DB
+      ├── 1. Poll & confirm old vectors deleted from Pinecone (NAMESPACE: current-doc)
+      ├── 2. Load & parse PDF (LangChain PyPDFLoader + text cleaning)
+      ├── 3. Split into chunks (RecursiveCharacterTextSplitter — 1200 size, 250 overlap)
+      ├── 4. Embed chunks (mistral-embed)
+      └── 5. Store in Pinecone Vector DB + verify upload count
                     │
 User asks a question
                     │
@@ -55,12 +58,13 @@ User asks a question
               FastAPI /chat
                     │
       ├── Embed the question
-      ├── Retrieve top-5 similar chunks from Pinecone
-      ├── Build prompt with context + chat history
-      └── Mistral AI generates the answer
+      ├── Retrieve top-6 diverse chunks via MMR similarity search
+      ├── Score threshold gate — reject chunks below 0.75 similarity
+      ├── Build strict grounded prompt with context + chat history
+      └── Mistral AI generates the answer (with auto model fallback on 429)
                     │
                     ▼
-         Answer + Source returned to React UI
+         Answer + Source (filename + page number) returned to React UI
 ```
 
 ---
@@ -71,11 +75,11 @@ User asks a question
 - **[FastAPI](https://fastapi.tiangolo.com/)** — High-performance async Python API
 - **[LangChain](https://www.langchain.com/)** — RAG pipeline, document loading, chunking
 - **[Pinecone](https://www.pinecone.io/)** — Managed vector database for semantic search
-- **[Mistral AI](https://mistral.ai/)** — `mistral-small` LLM for answer generation
+- **[Mistral AI](https://mistral.ai/)** — `open-mistral-nemo` LLM with auto fallback to `open-mistral-7b` and `mistral-small-latest`
 
 ### Frontend
 - **[React](https://react.dev/)** (with **Vite**) — Fast, modern UI
-- **CSS** — Custom dark mode styling
+- **CSS** — Custom purple/blue gradient dark theme with fullscreen layout
 
 ### DevOps
 - **[Docker](https://www.docker.com/)** — Containerized backend & frontend for easy deployment
@@ -89,8 +93,8 @@ dynamic-rag-chatbot/
 │
 ├── backend/
 │   ├── app.py              # FastAPI routes (/upload, /chat)
-│   ├── rag_pipeline.py     # Vectorstore creation & retriever setup
-│   ├── helper.py           # PDF loading, chunking, embeddings
+│   ├── rag_pipeline.py     # Vectorstore creation, MMR retriever, Mistral fallback LLM
+│   ├── helper.py           # PDF loading, text cleaning, chunking, embeddings
 │   ├── uploads/            # Temporary PDF storage
 │   ├── Dockerfile          # Backend Docker config
 │   ├── requirements.txt
@@ -100,7 +104,8 @@ dynamic-rag-chatbot/
 │   └── vite-project/
 │       ├── src/
 │       │   ├── App.jsx     # Main chat interface
-│       │   └── ...
+│       │   ├── App.css     # Gradient dark theme styles
+│       │   └── index.css   # Global fullscreen reset
 │       ├── Dockerfile      # Frontend Docker config
 │       ├── package.json
 │       └── vite.config.js
@@ -203,13 +208,14 @@ MISTRAL_API_KEY=your_mistral_api_key_here
 
 1. **Upload a PDF** via the React UI
 2. Backend receives the file and saves it temporarily in `uploads/`
-3. **Old vectors are deleted** from Pinecone (`NAMESPACE: current-doc`) — this is what makes it *dynamic*
-4. The PDF is loaded and split into overlapping chunks using LangChain
-5. Each chunk is embedded and stored in Pinecone
-6. When you ask a question, it is embedded and the **top 5 most similar chunks** are retrieved
-7. A structured prompt is built with those chunks + your chat history
-8. **Mistral AI** generates a clean, formatted answer
-9. The answer and source file name are returned to the UI
+3. **Old vectors are deleted** from Pinecone (`NAMESPACE: current-doc`) and polled until count = 0 — this is what makes it truly *dynamic*
+4. The PDF is loaded, cleaned, and split into overlapping chunks (1200 tokens, 250 overlap)
+5. Each chunk is embedded via `mistral-embed` and stored in Pinecone
+6. When you ask a question, it is embedded and the **top-6 most diverse chunks** are retrieved via MMR
+7. Chunks scoring below **0.75 similarity** are rejected — LLM never sees irrelevant context
+8. A strict grounded prompt is built with those chunks + chat history
+9. **Mistral AI** generates a clean answer — auto falls back to a lighter model on rate limits
+10. The answer, source filename, and page numbers are returned to the UI
 
 ---
 
@@ -236,7 +242,7 @@ curl "http://localhost:8000/chat?query=What is this document about?"
 ```json
 {
   "answer": "This document is about...",
-  "sources": ["your_document.pdf"]
+  "sources": ["your_document.pdf (page 2)", "your_document.pdf (page 4)"]
 }
 ```
 
@@ -244,11 +250,17 @@ curl "http://localhost:8000/chat?query=What is this document about?"
 
 ## 🧠 Key Design Decisions
 
-**Why dynamic deletion?**
-Standard RAG apps accumulate vectors from every uploaded document. This causes the retriever to mix answers from unrelated documents. By deleting all vectors in the namespace before each new upload, this app ensures 100% clean context every time.
+**Why dynamic deletion with polling?**
+Standard RAG apps accumulate vectors from every uploaded document, causing mixed-up answers. By deleting all vectors in the namespace and polling Pinecone until count = 0 before each new upload, this app ensures 100% clean context every time — no race conditions.
 
-**Why Mistral AI over OpenAI?**
-Mistral's `mistral-small` model is cost-efficient and performs well on document Q&A tasks. The API interface is nearly identical to OpenAI, making it easy to swap if needed.
+**Why MMR retrieval over plain similarity?**
+Plain similarity search often returns near-duplicate chunks. MMR (Max Marginal Relevance) fetches 20 candidates and picks the 6 most diverse ones, giving the LLM broader coverage of the document.
+
+**Why a similarity score threshold?**
+Without it, the LLM receives chunks even for completely off-topic questions and answers from its training data (hallucination). The 0.75 threshold ensures the LLM is only called when genuinely relevant context exists.
+
+**Why Mistral AI with model fallback?**
+Mistral's free tier has rate limits. The fallback chain (`open-mistral-nemo → open-mistral-7b → mistral-small-latest`) ensures the chatbot stays online even under heavy usage without any manual intervention.
 
 **Why a fixed namespace in Pinecone?**
 Using a fixed namespace (`current-doc`) makes it trivial to `delete_all` the previous document's vectors without needing to track individual vector IDs.
@@ -261,7 +273,7 @@ Docker removes environment setup friction entirely. Anyone can clone the repo an
 ## 🔮 Future Improvements
 
 - [ ] Support multiple PDFs simultaneously (per-user namespaces)
-- [ ] Re-ranking with a cross-encoder for better retrieval quality
+- [x] ~~Re-ranking with a cross-encoder for better retrieval quality~~ ✅ Implemented via MMR
 - [ ] Streaming responses for faster perceived performance
 - [ ] User authentication and personal document spaces
 - [ ] Persistent chat history with PostgreSQL
