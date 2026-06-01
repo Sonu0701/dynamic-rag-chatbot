@@ -2,6 +2,8 @@ from fastapi import FastAPI, UploadFile, File, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import uuid
+import asyncio
+import httpx
 
 from rag_pipeline import create_vectorstore, get_chain
 
@@ -27,9 +29,31 @@ UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
+# ── Keep-Alive Ping ──
+@app.on_event("startup")
+async def keep_alive():
+    async def ping():
+        while True:
+            await asyncio.sleep(14 * 60)
+            try:
+                async with httpx.AsyncClient() as client:
+                    await client.get(
+                        "https://dynamic-rag-chatbot-tgpt.onrender.com/health"
+                    )
+            except:
+                pass
+    asyncio.create_task(ping())
+
+
 @app.get("/")
 def home():
     return {"message": "Dynamic RAG Chatbot is running 🚀"}
+
+
+# ── Health Endpoint ──
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 
 @app.post("/upload")
@@ -100,13 +124,11 @@ def chat(query: str = Query(..., min_length=1)):
         if len(query.split()) < 2:
             return {"answer": "Please ask a more detailed question.", "sources": []}
 
-        # ✅ Retrieve with score threshold — returns [] if nothing is relevant enough
+        # ✅ Retrieve with score threshold
         docs = retriever.invoke(query)
 
         print(f"🔍 Query: '{query}' → {len(docs)} chunks passed threshold")
 
-        # ✅ GATE: If NO chunks pass the relevance threshold, refuse immediately
-        # This stops the LLM from using its training knowledge to answer off-topic questions
         if not docs:
             return {
                 "answer": "❌ This question does not appear to be related to the uploaded document. Please ask something from the PDF.",
@@ -120,12 +142,12 @@ def chat(query: str = Query(..., min_length=1)):
             context_parts.append(f"[Page {int(page) + 1 if isinstance(page, (int, float)) else page}]\n{doc.page_content}")
         context = "\n\n---\n\n".join(context_parts)
 
-        # Build history string (for prompt only, NOT for retrieval)
+        # Build history string
         history_text = ""
         if len(chat_history) >= 2:
             history_text = "\n".join(chat_history[-6:])
 
-        # ✅ Strict grounded prompt
+        # Strict grounded prompt
         prompt = f"""You are a precise document assistant. Answer ONLY using the document context provided below.
 
 STRICT RULES:
